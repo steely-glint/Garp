@@ -1,0 +1,97 @@
+<html><head>
+<link href="css/pipe.css" media="all" rel="stylesheet" />
+<title>|pipe| Claim a visible device</title></head>
+    <script src="js/pipe.js"></script>
+    <script type="text/javascript">
+        var duct = null;
+        var chout;
+        var localid;
+        var devid;
+        var nonce;
+
+
+        var gotId= function(id) {
+            localid = id;
+        };
+
+        function onDcMessage(evt) {
+            var resp = JSON.parse(evt.data);
+            if (resp.status === "ok") {
+                duct.addRemote(resp.name,resp.page,resp.owner,resp.dur,
+                    function() {
+                        chout.close();
+                        var page = resp.page;
+                        var join = (page.indexOf("?")> 0)?"&":"?";
+                        setTimeout(() => {
+                            document.location = page + join + "id=" + devid;
+                        },1000);
+                    });
+            } else {
+                console.log("problem with claim " + evt.data);
+                showStatus("Claim failed. Perhaps the device is already owned?")
+            }
+        }
+        function onNewDc(channel) {
+            console.log("New DC ")
+            channel.onmessage = onDcMessage;
+        }
+        function showStatus(stat){
+            document.getElementById("result").innerHTML = "<H4>"+stat+ "</H4>";
+        }
+        var dopair = function (toId, non) {
+            showStatus("Trying to claim the device");
+            console.log("Trying data to pair");
+            duct = new PipeDuct(localid);
+            duct.setTo(toId);
+            duct.setNonce(non);
+            duct.connect().then(function (d) {
+                showStatus("Connecting...");
+                console.log("Duct promise returned ");
+                duct.setOnDataChannel(onNewDc);
+
+                var channel = duct.createDataChannel("cert", {});
+                channel.onopen = function () {
+                    console.log("Outbound channel ");
+                    showStatus("Sending our claim to the device");
+                    var jmess = JSON.stringify({id: localid, action: "claim",dur:"y"});
+                    console.log("sending " + jmess);
+                    channel.send(jmess);
+                };
+                channel.onmessage = onDcMessage;
+                chout = channel;
+            });
+        };
+
+        function usedNativeQR(){
+            var ret = false;
+            if (document.location.hash) {
+                var h = document.location.hash.substring(1);
+                var bs = h.split(":");
+                var q = bs[0].toUpperCase();
+                var n = bs[1].toUpperCase();
+                console.log("Q = " + q + " n= " + n);
+                devid = q;
+                nonce = n;
+                ret = true;
+            }
+            return ret;
+        }
+
+        function loaded() {
+            if (!usedNativeQR()) {
+                document.location = "scan.html";
+            } else {
+                PipeDb.whoAmI(function (id) {
+                    gotId(id);
+                    dopair(devid, nonce);
+                }, function (err) {
+                    console.log("could not create identity " + err)
+                }, 'y',devid);
+            }
+        }
+    </script>
+<body onload="loaded();">
+    <h1>|pipe| Claim a device</h1>
+    <div id='result'> </div>
+</body>
+</html>

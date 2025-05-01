@@ -3,18 +3,35 @@ document.addEventListener('DOMContentLoaded',
   (e) => {
     canvas = document.getElementById("cloud");
     drawme();
+    var us = new URL(document.location);
+    let deviceId = us.searchParams.get("id");
+    PipeDb.whoAmI(function (id) {
+      console.log("from " + id + "  to " + deviceId);
+      gotId(id, deviceId);
+    }, function (err) {
+      console.log("could not create identity " + err)
+    }, "y");
+  });
 
-    ws = new WebSocket("http://localhost:8081/");
+function gotId(id, deviceId) {
+  duct = new PipeDuct(id);
+  console.log("setting deviceId" + deviceId);
+  duct.setTo(deviceId);
+  duct.connect().then(function (d) {
+    let ws = duct.createDataChannel("lidar");
+
     ws.onopen = (e) => {
-      console.log("ws opened");
+      console.log("dc opened");
     }
     ws.onmessage = (e) => {
       parseMessage(e.data);
     }
   });
+}
 
 let minAz = 45;
 let maxAz = 315;
+
 function drawme() {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
@@ -53,23 +70,38 @@ function draw(cloudlet) {
   }*/
   let az = cloudlet.azimuth;
 
-  if((az >= minAz) && (az+4 <= maxAz)) {
+  if ((az >= minAz-4) && (az <= maxAz+4)) {
 
     // erasure path
     ctx.beginPath();
     ctx.moveTo(halfx, halfy);
-    let a1 = (Math.PI * 2 * az) / 360.0;
-    let b1 = (Math.PI * 2 * (az + 4.0)) / 360.0;
+    let a1 = (Math.PI * 2 * minAz) / 360.0;
+    let b1 = (Math.PI * 2 * maxAz) / 360.0;
     let ax = halfx + halfx * Math.cos(a1);
     let ay = halfy + halfy * Math.sin(a1);
     let bx = halfx + halfx * Math.cos(b1);
     let by = halfy + halfy * Math.sin(b1);
     ctx.lineTo(ax, ay);
+    ctx.arc(halfx,halfy,halfx,a1,b1,true);
+    ctx.lineTo(halfx, halfy);
+    ctx.fillStyle = `rgb(200, 200, 225)`
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(halfx, halfy);
+    b1 = (Math.PI * 2 * az) / 360.0;
+    a1 = (Math.PI * 2 * (az + 4.0)) / 360.0;
+    ax = halfx + halfx * Math.cos(a1);
+    ay = halfy + halfy * Math.sin(a1);
+    bx = halfx + halfx * Math.cos(b1);
+    by = halfy + halfy * Math.sin(b1);
+    ctx.lineTo(ax, ay);
     ctx.lineTo(bx, by);
     ctx.lineTo(halfx, halfy);
 
-    ctx.fillStyle = `rgb(200, 200, 225)`
+    ctx.fillStyle = `rgb(200, 200, 200)`
     ctx.fill();
+
 
 
     cloudlet.data.forEach((pt) => {
@@ -91,17 +123,16 @@ function draw(cloudlet) {
   drawme();
 }
 
-function parseMessage(d) {
-  d.arrayBuffer().then((v) => {
-    let blocksize = 100;
-    let blocksPerPacket = 12;
-    for (let i = 0; i < blocksPerPacket; i++) {
-      let offs = i * blocksize;
-      let block = v.slice(offs, offs + blocksize);
-      let cloudlet = parseBlock(block);
-      draw(cloudlet);
-    }
-  });
+function parseMessage(v) {
+  let blocksize = 100;
+  let blocksPerPacket = 12;
+  for (let i = 0; i < blocksPerPacket; i++) {
+    let offs = i * blocksize;
+    let block = v.slice(offs, offs + blocksize);
+    let cloudlet = parseBlock(block);
+    draw(cloudlet);
+  }
+
 }
 
 function getUnsignedShort(b1, b2) {

@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.3/umd/popper.min.js" integrity="sha384-vFJXuSJphROIrBnz7yo7oB41mKfc8JzQZiCq4NCceLEaO4IHwicKwpJf9c9IpFgh" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/js/bootstrap.min.js" integrity="sha384-alpBpkh1PFOepccYVYDB4do5UnbKysX5WZXm3XxPqe5iKTfUKjNkCk9SaVuEZflJ" crossorigin="anonymous"></script>
+    <script src="js/pipe.js"></script>
+    <script src="https://pi.pe/iot/js/qrcode.js"></script>
+
+    <meta charset="UTF-8">
+    <title>Info about one Device</title>
+</head>
+
+<script>
+    var BASE_URL= document.location.href.substring(0,document.location.href.lastIndexOf("/")+1) ;
+    var myId;
+    var did;
+    var device;
+    var duct;
+
+    function lend(id){
+        document.location = "lend.html?id="+id;
+    }
+
+    function saveData(blob) {
+        var fileName = 'pipe-'+did+'.log';
+        console.log("Save log ?");
+        var a = document.createElement("a");
+        document.body.appendChild(a);
+        a.style = "display: none";
+        console.log("saving log blob as " + fileName);
+        a.href = window.URL.createObjectURL(blob);;
+        a.download = fileName;
+        a.click();
+        window.URL.revokeObjectURL(a.href);
+    }
+
+    function getLog(){
+        var chunks = [];
+        var channel = duct.createDataChannel("pipe.log");
+        channel.onopen = function () {
+            console.log("Log channel open ");
+        }
+        channel.onmessage = (e) => {
+            if (e.data instanceof ArrayBuffer){
+                chunks.push(e.data);
+                console.log("Log channel data "+e.data.byteLength);
+            } else {
+                console.log("Log channel info "+e.data);
+                var blob = new Blob(chunks, { 'type' : 'text/plain' });
+                saveData(blob)
+            }
+        };
+        channel.onclose = (e) => {
+        }
+    }
+
+    function use(id, page) {
+        localStorage[page] = id;
+        document.location = page;
+    }
+
+    function del(id){
+        document.location = "delete.html?id="+id;
+    }
+    function addLocalElement(mid){
+        var e = device;
+        var ret = "<table><tr>";
+        var a= "<td>";
+        var z= "</td>";
+        var q='"';
+        ret = ret + a + "<button type='button' onclick='use("+q+e.id+q+","+q+e.page+q+")' class='btn btn-primary'>"+e.name+"</button>" + z;
+        if (mid === e.owner) {
+            ret = ret + a + "<button type='button' onclick='lend("+q+e.id+q+")' class='btn btn-light'>Lend</button>" + z;
+        } else {
+            ret = ret + a+ "borrowed" +z;
+        }
+        ret = ret + a+ "<span id='days'></span>" +z;
+
+        ret = ret + a + "<button type='button' onclick='getLog()' class='btn btn-light'>pull logs</button>" + z;
+        ret = ret + a + "<button type='button' onclick='del("+q+e.id+q+")' class='float-right btn btn-danger'>Delete</button>" + z;
+        ret = ret + a + "<span id='alive'></span>" + z;
+
+        ret = ret +"</tr></table>";
+        return ret;
+    }
+    function gotId(liid) {
+        myId = liid;
+        duct = new PipeDuct(myId);
+        duct.setTo(did);
+        duct.connect().then(function (d) {
+            console.log("Duct promise returned ");
+            var now;
+            var channel = duct.createDataChannel("echo", {});
+            channel.onopen = function () {
+                console.log("Outbound channel ");
+                now = Date.now();
+                var jmess = JSON.stringify({now: now });
+                console.log("sending " + jmess);
+                channel.send(jmess);
+                $('#days').html("valid for "+duct.daysRemaining+" days ");
+            };
+            channel.onmessage = (e) => {
+                var req = JSON.parse(e.data);
+                console.log("got " + e.data);
+                var txt = "live";
+                if (req.now){
+                    var diff = Date.now() - req.now;
+                    txt += " rtt="+ diff+ " ms";
+                }
+                $('#alive').html(txt);
+            };
+            var certs = duct.createDataChannel("cert", {});
+            certs.onopen = function () {
+                console.log("Cert channel ");
+                var jmess = JSON.stringify({action: "info",id:myId});
+                console.log("sending " + jmess);
+                certs.send(jmess);
+                console.log("owner tbd")
+            };
+           certs.onmessage = (e) => {
+                var res = JSON.parse(e.data);
+                if (res.devId) {
+                    if (device.owner == myId) {
+                        console.log("confirmed ownership")
+                    } else {
+                        console.log("we are the owner but don't know it...")
+                    }
+                    // owner
+                } else {
+                    if (device.owner == myId) {
+                        console.log("we think we are the owner but are not...")
+                    } else {
+                        console.log("confirmed non-owner")
+                    }
+                    // not owner
+                }
+            };
+
+                var certs = duct.createDataChannel("cert", {});
+                certs.onopen = function () {
+                    console.log("Cert channel ");
+                    var jmess = JSON.stringify({action: "info"});
+                    console.log("sending " + jmess);
+                    certs.send(jmess);
+                };
+                certs.onmessage = (e) => {
+                    var res = JSON.parse(e.data);
+                    if (res.devId) {
+                        if (device.owner == myId) {
+                            console.log("confirmed ownership")
+                        } else {
+                            console.log("we are the owner but don't know it...")
+                        }
+                        // owner
+                    } else {
+                        if (device.owner == myId) {
+                            console.log("we think we are the owner but are not...")
+                        } else {
+                            console.log("confirmed non-owner")
+                        }
+                        // not owner
+                    }
+                };
+
+
+        });
+    }
+
+
+    document.addEventListener('DOMContentLoaded', (ev) => {
+        doReady();
+    });
+    async function doReady(){
+        let params = new URLSearchParams(document.location.search.substring(1));
+        did  = params.get("id");
+        let lcid = did;
+        console.log("info on "+did)
+
+        PipeDb.whoAmI( function (id) {
+            console.log("from "+id+"  to "+did);
+                PipeDb.dbListPrint( (list) => {
+                    var le = list.find((e) => {
+                        return (e.id === did)
+                    });
+                    if (le) {
+                        if (le.id === did) {
+                            device = le;
+                            var h = addLocalElement(id);
+                            $('#devices').html(h);
+                            gotId(id);
+                        } else {
+                            console.log("not owner");
+                        }
+                    } else {
+                        $('#reminfo').html("<h3>Remote device isn't owned by or lent to you</h3>");
+                    }
+                });
+
+        }, function(err) {
+            console.log("could not create identity " + err)
+        },"y",lcid);
+    };
+</script>
+<body>
+<div class="container-fluid">
+    <div class="card float-right">
+        <div class="card-img-top"><i class="fa fa-home fa-4x" aria-hidden="true"></i></div>
+        <div class="card-body">
+            <a href="index.html" class="btn btn-primary">List</a>
+        </div>
+    </div>
+    <div id="reminfo"></div>
+    <table class="table table-striped table-dark" id="devices">
+
+    </table>
+</div>
+</body>
+</html>

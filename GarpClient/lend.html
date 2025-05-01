@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/css/bootstrap.min.css" integrity="sha384-PsH8R72JQ3SOdhVi3uxftmaW6Vc51MKb0q5P2rRUpPvrszuE4W1povHYgTpBfshb" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+    <script src="https://code.jquery.com/jquery-3.2.1.slim.min.js" integrity="sha384-KJ3o2DKtIkvYIK3UENzmM7KCkRr/rE9/Qpg6aAZGJwFDMVNA/GpGFF93hXpG5KkN" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.12.3/umd/popper.min.js" integrity="sha384-vFJXuSJphROIrBnz7yo7oB41mKfc8JzQZiCq4NCceLEaO4IHwicKwpJf9c9IpFgh" crossorigin="anonymous"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0-beta.2/js/bootstrap.min.js" integrity="sha384-alpBpkh1PFOepccYVYDB4do5UnbKysX5WZXm3XxPqe5iKTfUKjNkCk9SaVuEZflJ" crossorigin="anonymous"></script>
+    <script src="pipe.js"></script>
+    <script src="https://pi.pe/iot/js/qrcode.js"></script>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Lend my Device</title>
+</head>
+
+<script>
+    var myId;
+    var device;
+    var nonce;
+    var borrowerId;
+    var borrowerDuct;
+    var duration = 's';
+    var qrcode;
+    var urltxt;
+    var statusChannel;
+
+
+
+
+    function createHexString(arr) {
+        var result = "";
+        var z;
+
+        for (var i = 0; i < arr.length; i++) {
+            var str = arr[i].toString(16);
+
+            z = 2 - str.length + 1;
+            str = Array(z).join("0") + str;
+
+            result += str;
+        }
+
+        return result.toUpperCase();
+    }
+
+    function statusUpdate(message){
+        if (statusChannel){
+            statusChannel.send(JSON.stringify({type:"status",message:message}));
+        }
+    }
+    function mkNonce() {
+        var buf = new Uint8Array(16);
+        window.crypto.getRandomValues(buf);
+        var ret = createHexString(buf);
+        return ret;
+    }
+    function mkUrl(target){
+        var loc = document.location;
+        var tslash = +loc.pathname.lastIndexOf("/");
+        var dir = loc.pathname.substr(0,tslash);
+        var ret = loc.protocol+"//"+loc.host+dir+"/"+target;
+        return ret;
+    }
+    function forwardToDevice(mess,friendChan){
+        console.log("Now introing friend to device with "+JSON.stringify(mess));
+        statusUpdate("Owner is connecting to device");
+        var duct2 = new PipeDuct(myId, borrowerDuct.getWs());
+        duct2.setTo(device.id);
+        duct2.connect().then(function (d2) {
+            console.log("second duct made to device");
+            $('#result').html("Telling device about friend");
+            statusUpdate("Owner is connecting to the device ");
+
+            var cname = (mess.dur == "i") ? "iphonetempfriend":"cert";
+            console.log("opening intro channel "+cname+"  to device:  " + device.id+ " for friend "+mess.id);
+
+            var channel = duct2.createDataChannel(cname, {});
+            channel.onopen = () => {
+                mess.action = "introduce";
+                console.log("sending " + JSON.stringify(mess));
+                statusUpdate("Owner is sending our details to the device ");
+
+                channel.send(JSON.stringify(mess));
+            };
+            channel.onmessage = (e) => {
+                var res = JSON.parse(e.data);
+                if (res.status === 'ok') {
+                    /* these should really come from the device */
+                    res.owner = device.owner;
+                    res.name = device.name;
+                    res.dur = duration;
+                    res.id = device.id;
+                    statusUpdate("Retreiving device details ");
+                    console.log("forwarding good" +JSON.stringify(res));
+                    friendChan.send(JSON.stringify(res));
+                    $('#result').html("Finished.");
+                } else {
+                    $('#result').html("status : "+res.status+" message: "+ res.errorMessage);
+                    console.log("forwarding bad" +JSON.stringify(res));
+                    friendChan.send(JSON.stringify(res));
+                }
+
+            };
+        });
+    }
+    function gotId(liid) {
+        myId = liid;
+        borrowerDuct = new PipeDuct(myId);
+        borrowerDuct.setTurn(0);
+        borrowerDuct.setOnDataChannel((channel) => {
+            console.log("New DC " + channel.label);
+            console.log("from "+borrowerDuct.toFinger);
+            if (channel.label === "status"){
+                statusChannel = channel;
+                statusUpdate("Connected to Owner")
+            }
+            if (channel.label === "cert") {
+                $('#qr').hide();
+                $('#result').html("Scan ok - connected to friend's phone...");
+                channel.onmessage = (e) => {
+                    var req = JSON.parse(e.data);
+                    console.log("got "+ e.data);
+                    if (req.action === "borrow") {
+                        if (req.nonce === nonce) {
+                            // if the far end claims to be an iphone
+                            // then we do the one-off iphone-add thing.
+                            if (req.dur == "i") {
+                                borrowerId = req.id ;
+                                $('#result').html("Scan ok - connected to friend's iphone (lent for 1 session only)");
+                                forwardToDevice(req, channel);
+                            } else {
+                                borrowerId = borrowerDuct.toFinger;
+                                borrowerDuct.getCert(borrowerId, (c) => {
+                                    req.cert = c;
+                                    req.dur = duration;
+                                    req.id = borrowerId;
+                                    forwardToDevice(req, channel);
+                                });
+                            }
+                        } else {
+                            console.log("nonce does not match");
+                        }
+                    } else {
+                        console.log("unknown action "+req.action);
+                    }
+                };
+            }
+        });
+
+        qrcode = new QRCode(document.getElementById("qr"), {
+            width: 280,
+            height: 280,
+            correctLevel: QRCode.CorrectLevel.L
+        });
+        mkQr();
+        borrowerDuct.setTo(device.id);
+        borrowerDuct.connect().then(function (d) {
+            console.log("connected as " + myId);
+            $('#sharebutton').removeClass("disabled");
+        });
+    }
+    function shareURL(){
+        let shareData = {
+            title:"Lend access to your device",
+            text:"If you want to lend access to your device, share this link with the borrower.",
+            url:urltxt,
+        }
+        if (!navigator.canShare) {
+            console.log("navigator.canShare() not supported.");
+        } else if (navigator.canShare(shareData)) {
+            console.log("navigator.canShare() supported. We can use navigator.share() to send the data.");
+            navigator.share(shareData).catch( (err) =>{console.log("cant share because "+err)});
+        } else {
+            console.log("Specified data cannot be shared.");
+        }
+    }
+
+    function mkQr(){
+        nonce = mkNonce();
+        urltxt = mkUrl("borrow.html") + "?dur=" + duration + "#" + myId + ":" + nonce;
+        console.log("mk qr of " + urltxt);
+        qrcode.makeCode(urltxt);
+    }
+
+    $( document ).ready(() => {
+        $('.dropdown-item').click(function(e) {
+            var durI = e.currentTarget;
+            duration = durI.getAttribute("data-name");
+            var text = durI.innerHTML;
+            console.log("Setting duration to "+ duration +" ie "+text);
+            $('#durbutton').text(text);
+            mkQr();
+            if (!navigator.canShare) {
+                $('#sharebutton').hide();
+            }
+            });
+        PipeDb.whoAmI( function (id) {
+            if (location.search){
+                var us = new URL(document.location);
+                let l = us.searchParams.get("id");
+                console.log("want to lend "+l)
+                PipeDb.dbListPrint( (list) => {
+                var le = list.find((e) => {
+                    return (e.id === l)
+                });
+                    if (le) {
+                        if (le.owner === id) {
+                            device = le;
+                            //$('#devtxt').text(device.name+" ");
+                            gotId(id);
+                        } else {
+                            console.log("not owner");
+                        }
+                    } else {
+                        console.log("id isn't a friend");
+                    }
+                });
+            }
+        }, function(err) {
+            console.log("could not create identity " + err)
+        });
+    });
+</script>
+<body>
+    <div class="card" id="device ">
+        <div class="card-body">
+            <div class="dropdown">
+                Give access for
+                <button id="durbutton" class="btn btn-secondary dropdown-toggle" type="button" id="dropdownMenuButton"
+                        data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    One Session
+                </button>
+                <div class="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                    <button class="dropdown-item" data-name="s" type="button">One Session</button>
+                    <button class="dropdown-item" data-name="h" type="button">One Hour</button>
+                    <button class="dropdown-item" data-name="d" type="button">One Day</button>
+                    <button class="dropdown-item" data-name="w" type="button">One Week</button>
+                    <button class="dropdown-item" data-name="m" type="button">One Month</button>
+                    <button class="dropdown-item" data-name="y" type="button">One Year</button>
+                </div>
+                <a  id="sharebutton" onclick="shareURL();" class="btn btn-primary disabled ">Lend</a>
+            </div>
+        </div>
+    </div>
+    <div class="card" style="width: 20rem;">
+        <div class="card-img-top" id="qr" alt="QRcode" style="padding:2%;"></div>
+        <div class="card-body">
+            <p id="result" class="card-text">A nearby borrower can scan QR.</p>
+        </div>
+    </div>
+</body>
+</html>

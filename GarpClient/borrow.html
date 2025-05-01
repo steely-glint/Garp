@@ -1,0 +1,106 @@
+<html>
+<head>
+    <link href="css/pipe.css" media="all" rel="stylesheet"/>
+    <title>Borrow access to a device</title></head>
+<script src="js/pipe.js"></script>
+<script type="text/javascript">
+    var duct = null;
+    var localid;
+    var lenderId;
+    var lenderNonce;
+    var duration = "s";
+
+
+    var gotId = function (id) {
+        localid = id;
+        dopair(lenderId, lenderNonce);
+    };
+
+    function showStatus(mess){
+        let result = document.getElementById("result");
+        result.innerHTML = mess;
+    }
+    var dopair = function (toId, non) {
+        console.log("Trying data to pair");
+        showStatus("Connecting to owner");
+        duct = new PipeDuct(localid);
+        duct.setTo(toId);
+        duct.setNonce(non);
+        duct.connect().then(function (d) {
+            console.log("Duct promise returned ");
+            var status = duct.createDataChannel("status");
+            status.onopen = () => {
+                showStatus("Connected to owner");
+            };
+            status.onmessage = (evt) => {
+                let mo = JSON.parse(evt.data);
+                showStatus(mo.message)
+            }
+            var channel = duct.createDataChannel("cert", {});
+            channel.onopen =  () =>  {
+                console.log("Outbound channel ");
+                showStatus("requesting access to device")
+                var jmess = JSON.stringify({action: "borrow", nonce: non});
+                console.log("sending " + jmess);
+                channel.send(jmess);
+            };
+            channel.onmessage = (evt) => {
+                var resp = JSON.parse(evt.data);
+                if (resp.status === "ok") {
+                    console.log("adding print+cert " + JSON.stringify(resp));
+                    showStatus("storing device info");
+                    var devid = resp.id;
+                    PipeDb.dbAddPrint(resp, function () {
+                        console.log("add print done.");
+                        showStatus("device info saved");
+                        PipeDb.copyMe(devid,lenderId).then(() => {
+                            PipeDb.delMe(lenderId).then(() => {
+                                var page = resp.page;
+                                var join = (page.indexOf("?") > 0) ? "&" : "?";
+                                document.location = page + join + "id=" + devid;
+                            });
+                        });
+                    });
+                } else {
+                    console.log("problem with claim " + evt.data);
+                }
+            };
+        });
+    };
+
+    function usedNativeQR() {
+        var ret = false;
+        if (document.location.hash) {
+            var h = document.location.hash.substring(1);
+            var bs = h.split(":");
+            lenderId = bs[0];
+            lenderNonce = bs[1];
+            console.log("Q = " + lenderId + " n= " + lenderNonce);
+            ret = true;
+        }
+        var params = new URLSearchParams(document.location.search.substring(1));
+        duration = params.get("dur");
+        console.log("duration =" + duration);
+
+        return ret;
+    }
+
+    function loaded() {
+        if (!usedNativeQR()) {
+            document.location = "scan.html";
+        }
+        PipeDb.whoAmI(function (id) {
+            gotId(id);
+        }, function (err) {
+            console.log("could not create identity " + err)
+        }, duration,lenderId);
+
+    }
+</script>
+<body onload="loaded();">
+
+<h1>Borrow access to a device</h1>
+<div id='result'></div>
+
+</body>
+</html>
