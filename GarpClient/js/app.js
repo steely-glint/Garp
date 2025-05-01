@@ -1,0 +1,154 @@
+let ws;
+document.addEventListener('DOMContentLoaded',
+  (e) => {
+    canvas = document.getElementById("cloud");
+    drawme();
+
+    ws = new WebSocket("http://localhost:8081/");
+    ws.onopen = (e) => {
+      console.log("ws opened");
+    }
+    ws.onmessage = (e) => {
+      parseMessage(e.data);
+    }
+  });
+
+let minAz = 45;
+let maxAz = 315;
+function drawme() {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const halfx = w / 2;
+  const halfy = h / 2;
+
+  ctx.beginPath();
+  const x = halfx;
+  const y = halfy;
+  let startAngle = 0; // Starting point on circle
+  let endAngle = Math.PI * 2; // End point on circle
+  let radius = 10;
+  const counterclockwise = false; // clockwise or counterclockwise
+  ctx.arc(x, y, radius, startAngle, endAngle, counterclockwise);
+  ctx.fillStyle = `rgb(255, 0, 0)`
+  ctx.fill();
+  ctx.beginPath();
+  startAngle = (Math.PI * 2 * 45) / 360; // Starting point on circle
+  endAngle = (Math.PI * 2 * 315) / 360; // End point on circle
+  ctx.arc(x, y, halfx - 1, startAngle, endAngle, counterclockwise);
+  ctx.strokeStyle = '#FF0000';
+  ctx.stroke();
+}
+
+function draw(cloudlet) {
+  const ctx = canvas.getContext("2d");
+  const w = canvas.width;
+  const h = canvas.height;
+  const halfx = w / 2;
+  const halfy = h / 2;
+  const counterclockwise = false; // clockwise or counterclockwise
+
+  /*if (cloudlet.azimuth == 0){
+    ctx.clearRect(0, 0, w, h);
+  }*/
+  let az = cloudlet.azimuth;
+
+  if((az >= minAz) && (az+4 <= maxAz)) {
+
+    // erasure path
+    ctx.beginPath();
+    ctx.moveTo(halfx, halfy);
+    let a1 = (Math.PI * 2 * az) / 360.0;
+    let b1 = (Math.PI * 2 * (az + 4.0)) / 360.0;
+    let ax = halfx + halfx * Math.cos(a1);
+    let ay = halfy + halfy * Math.sin(a1);
+    let bx = halfx + halfx * Math.cos(b1);
+    let by = halfy + halfy * Math.sin(b1);
+    ctx.lineTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.lineTo(halfx, halfy);
+
+    ctx.fillStyle = `rgb(200, 200, 225)`
+    ctx.fill();
+
+
+    cloudlet.data.forEach((pt) => {
+      ctx.beginPath();
+      const radius = (pt[0] / 120.0) * halfy;
+      const x = halfx; // x coordinate
+      const y = halfy; // y coordinate
+      const startAngle = (Math.PI * 2 * az) / 360; // Starting point on circle
+      const endAngle = (Math.PI * 2 * (az + .25)) / 360; // End point on circle
+      const counterclockwise = false; // clockwise or counterclockwise
+      ctx.arc(x, y, radius, startAngle, endAngle, counterclockwise);
+      let dark = Math.abs(pt[1]);
+      ctx.strokeStyle = `rgb(0, 0, 0)`;
+
+      ctx.stroke();
+      az += .25;
+    })
+  }
+  drawme();
+}
+
+function parseMessage(d) {
+  d.arrayBuffer().then((v) => {
+    let blocksize = 100;
+    let blocksPerPacket = 12;
+    for (let i = 0; i < blocksPerPacket; i++) {
+      let offs = i * blocksize;
+      let block = v.slice(offs, offs + blocksize);
+      let cloudlet = parseBlock(block);
+      draw(cloudlet);
+    }
+  });
+}
+
+function getUnsignedShort(b1, b2) {
+  let ret = (b2 << 8) | b1;
+  return ret;
+}
+
+function getSignedByte(b1) {
+  let ret = 0x7f & b1;
+  if (b1 & 0x80) {
+    ret -= 256;
+  }
+  return ret;
+}
+
+function parseBlock(block) {
+  let subblocklen = 6;
+  let head = new Uint8Array(block.slice(0, 4));
+  let cloudlet = [];
+  let timestamp = 0;
+  let az = 0.0;
+  if ((head[0] == 0xff) && (head[1] == 0xee)) {
+    let baz = getUnsignedShort(head[2], head[3]);
+    az = baz / 100.0;
+    let offs = 4;
+    for (let n = 0; n < 16; n++) {
+      let vblock = new Uint8Array(block.slice(offs, offs + subblocklen))
+      var d1 = getUnsignedShort(vblock[0], vblock[1]);
+      var rss1 = getSignedByte(vblock[2]);
+      var d2 = getUnsignedShort(vblock[3], vblock[4]);
+      var rss2 = getSignedByte(vblock[5]);
+      let d = (rss1 > rss2) ? d1 : d2;
+      let range = d / 100.0;
+      offs += subblocklen;
+      let pt = [range, Math.max(rss1, rss2)];
+      cloudlet[n] = pt;
+    }
+    let tsd = block.slice(offs, offs + 4);
+    let off = 3
+    while (off >= 0) {
+      timestamp = (timestamp << 8) | (tsd[off]);
+      off--;
+    }
+  } else if ((head[0] == 0xff) && (head[1] == 0xff)) {
+    // skip this non-data.
+  } else {
+    console.log("invalid flags " + flags);
+  }
+  return {stamp: timestamp, data: cloudlet, azimuth: az};
+}
