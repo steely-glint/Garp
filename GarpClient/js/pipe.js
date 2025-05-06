@@ -1,4 +1,4 @@
-/* 
+/*
  * soucecode copyright Westhawk Ltd 2014 - all rights reserved.
  */
 
@@ -1978,7 +1978,7 @@ PipeDuct.prototype.stashCandy = function (cand) {
                     contentsObj.session = _parseO(line.contents);
                 }
                 if (line.type == "m") {
-                    // New m-line, 
+                    // New m-line,
                     // create a new content
                     var media = _parseM(line.contents);
                     sdpObj = {};
@@ -2101,7 +2101,7 @@ PipeDuct.prototype.stashCandy = function (cand) {
             return contentsObj;
         },
         // sdp: an object representing the body
-        // Return a text string in SDP format  
+        // Return a text string in SDP format
         buildSDP: function (contentsObj) {
             // Write some constant stuff
             var session = contentsObj.session;

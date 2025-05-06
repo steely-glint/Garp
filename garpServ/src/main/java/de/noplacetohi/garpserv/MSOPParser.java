@@ -4,8 +4,10 @@
  */
 package de.noplacetohi.garpserv;
 
+import com.phono.srtplight.Log;
 import java.net.DatagramPacket;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 
 /**
  *
@@ -15,58 +17,83 @@ public class MSOPParser {
 
     final static int blocklen = 100;
 
-    void parse(DatagramPacket p) {
+    ArrayList<Block> parse(DatagramPacket p) {
+        ArrayList<Block> ret = new ArrayList();
 
-        ByteBuffer data = ByteBuffer.wrap(p.getData());
-        int pos = 0;
-        for (int n = 0; n < 12; n++) {
-            var block = data.slice(pos, blocklen);
-            parseBlock(block);
-            pos += blocklen;
+        try {
+            ByteBuffer data = ByteBuffer.wrap(p.getData());
+            int pos = 0;
+            for (int n = 0; n < 12; n++) {
+                var block = data.slice(pos, blocklen);
+                var b = parseBlock(block);
+                if (b != null) {
+                    ret.add(b);
+                }
+                pos += blocklen;
+            }
+            long ts = readStamp(data, pos);
+            //System.err.println(" " + ts);
+        } catch (Throwable t) {
+            t.printStackTrace();
         }
-        long ts = readStamp(data,pos);
-        System.err.println(" "+ts);
+        return ret;
     }
 
     private boolean unsignedByteComp(byte a, byte b) {
         return ((a & 0xFF) > (b & 0xFf));
     }
 
-    
-    int getUnsignedShort(ByteBuffer b){
+    int getUnsignedShort(ByteBuffer b) {
         byte b1 = b.get();
         byte b2 = b.get();
         int ret = ((b2 & 0xFF) << 8) | (b1 & 0xFF);
         return ret;
     }
-    
-    private void parseBlock(ByteBuffer block) {
+
+    class Measure {
+
+        Double range;
+        int rss;
+    }
+
+    class Block {
+
+        Double az;
+        Measure[] values;
+    }
+
+    private Block parseBlock(ByteBuffer block) {
+        Block b = null;
         short flags = block.getShort();
         if (flags == (short) 0xFFEE) {
+            b = new Block();
             int az = getUnsignedShort(block);
-            
-            System.err.print(((int) az)/100.0);
+
+            b.az = az / 100.0;
+            b.values = new Measure[16];
             for (int n = 0; n < 16; n++) {
+                b.values[n] = new Measure();
                 var d1 = getUnsignedShort(block);
                 var rss1 = block.get();
                 var d2 = getUnsignedShort(block);
                 var rss2 = block.get();
                 var v = unsignedByteComp(rss1, rss2) ? d1 : d2;
-                Double range = v / 100.0;
-                System.err.print(" " + range);
+                var r = unsignedByteComp(rss1, rss2) ? rss1 : rss2;
+                b.values[n].range = v / 100.0;
+                b.values[n].rss = r;
             }
-            System.err.println();
         } else if (flags == (short) 0xFFFF) {
         } else {
             System.err.println("invalid flag =" + Integer.toHexString(flags));
         }
+        return b;
     }
 
     private long readStamp(ByteBuffer b, int pos) {
         long ret = 0;
-        int off =3;
-        while (off >=0 ){
-            ret = (ret <<8) |( b.get(pos+off) & 0xFF);
+        int off = 3;
+        while (off >= 0) {
+            ret = (ret << 8) | (b.get(pos + off) & 0xFF);
             off--;
         }
         return ret;

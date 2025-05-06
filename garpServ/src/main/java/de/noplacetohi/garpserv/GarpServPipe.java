@@ -72,7 +72,10 @@ public class GarpServPipe {
             try {
                 switch (l) {
                     case "lidar":
-                        var r = new LidarEndPoint(s);
+                    case "lidar-center":
+                    case "lidar-left":
+                    case "lidar-right":
+                        var r = new LidarEndPoint(l, s);
                         allWs.add(r);
                         ret = r;
                         break;
@@ -101,15 +104,20 @@ public class GarpServPipe {
         allWs = new java.util.concurrent.CopyOnWriteArrayList();
     }
 
-
     public void start() {
         try {
+            MSOPParser parser = new MSOPParser();
+
             listener = new UDPListener(port) {
                 @Override
                 public void hark(DatagramPacket p) {
+                    var blocks = parser.parse(p);
+                    var first = blocks.getFirst();
+                    
+                    //Log.info("az = "+first.az);
                     allWs.forEach((ws) -> {
                         if (ws.isOpen()) {
-                            ws.send(p.getData());
+                            ws.offer(first.az, p.getData());
                         }
                     });
                 }
@@ -124,9 +132,29 @@ public class GarpServPipe {
     private static class LidarEndPoint implements SCTPStreamListener {
 
         private final SCTPStream stream;
+        private Double[] activeAngle = {0.0, 360.0};
+        private final static Double[] center = {100.0, 210.0};
+        private final static Double[] left = {0.0,100.0};
+        private final static Double[] right = {210.0, 360.0};
+        private final String lab;
 
-        public LidarEndPoint(SCTPStream s) {
+        public LidarEndPoint(String l, SCTPStream s) {
             this.stream = s;
+            this.lab = l;
+            switch (l) {
+                case "lidar-center":
+                    activeAngle = center;
+                    break;
+                case "lidar-right":
+                    activeAngle = right;
+                    break;
+                case "lidar-left":
+                    activeAngle = left;
+                    break;
+                case "lidar":
+                default:
+                    break;
+            }
         }
 
         @Override
@@ -143,12 +171,15 @@ public class GarpServPipe {
             return (stream != null) && (stream.OutboundIsOpen());
         }
 
-        private void send(byte[] data) {
-            if (stream.OutboundIsOpen()) {
-                try {
-                    stream.send(data);
-                } catch (Exception ex) {
-                    Log.error("can't send");
+        private void offer(Double az, byte[] data) {
+            if ((az >= activeAngle[0]) && (az <= activeAngle[1])) {
+                if (stream.OutboundIsOpen()) {
+                    try {
+                        //Log.info("sending to "+lab);
+                        stream.send(data);
+                    } catch (Exception ex) {
+                        Log.error("can't send");
+                    }
                 }
             }
         }
