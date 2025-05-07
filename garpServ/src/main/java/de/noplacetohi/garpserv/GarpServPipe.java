@@ -8,6 +8,9 @@ import java.net.DatagramPacket;
 import java.net.SocketException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.BiFunction;
+import javax.json.JsonArray;
+import javax.json.JsonObject;
+import pe.pi.client.device.endpoints.core.JsonEndpoint;
 import pe.pi.client.endpoints.proxy.TermEndpoint;
 import pe.pi.client.small.App;
 import pe.pi.client.small.screen.SmallScreen;
@@ -83,6 +86,9 @@ public class GarpServPipe {
                         Log.warn("Creating " + l);
                         ret = new TermEndpoint(l, s);
                         break;
+                    case "jsontest":
+                        Log.warn("Creating test json recever");
+                        ret = new JsonTestEndpoint(s);
                 }
             } catch (Exception x) {
                 Log.error("opening label " + l + " caused exception " + x.getMessage());
@@ -113,7 +119,7 @@ public class GarpServPipe {
                 public void hark(DatagramPacket p) {
                     var blocks = parser.parse(p);
                     var first = blocks.getFirst();
-                    
+
                     //Log.info("az = "+first.az);
                     allWs.forEach((ws) -> {
                         if (ws.isOpen()) {
@@ -134,7 +140,7 @@ public class GarpServPipe {
         private final SCTPStream stream;
         private Double[] activeAngle = {0.0, 360.0};
         private final static Double[] center = {100.0, 210.0};
-        private final static Double[] left = {0.0,100.0};
+        private final static Double[] left = {0.0, 100.0};
         private final static Double[] right = {210.0, 360.0};
         private final String lab;
 
@@ -182,6 +188,29 @@ public class GarpServPipe {
                     }
                 }
             }
+        }
+    }
+
+    private static class JsonTestEndpoint extends JsonEndpoint {
+
+        public JsonTestEndpoint(SCTPStream s) {
+            super(s);
+        }
+        @Override
+        public void onMessage(SCTPStream stream, String string) {
+            Log.info("message is "+string.length()+" chars long");
+            super.onMessage(stream, string);
+        }
+        @Override
+        public JsonObject onJsonMessage(JsonObject messj) {
+            Log.info("got json message");
+            JsonArray blocks = messj.getJsonArray("blocks");
+            JsonObject block = blocks.getJsonObject(0);
+            var az = block.getJsonNumber("azimuth");
+            var ts = block.getInt("stamp");
+
+            Log.info("az = " + az.doubleValue() + " ts = " + ts);
+            return messj;
         }
     }
 }

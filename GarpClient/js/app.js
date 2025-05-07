@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded',
       console.log("could not create identity " + err)
     }, "y");
   });
-
+let jsontest;
 function gotId(id, deviceId) {
   duct = new PipeDuct(id);
   console.log("setting deviceId" + deviceId);
@@ -30,7 +30,7 @@ function gotId(id, deviceId) {
     ws = duct.createDataChannel("lidar-left",{ordered:false,maxPacketLifeTime:4});
 
     ws.onopen = (e) => {
-      console.log("lidar-left\" dc opened");
+      console.log("lidar-left dc opened");
     }
     ws.onmessage = (e) => {
       parseMessage(e.data);
@@ -43,12 +43,20 @@ function gotId(id, deviceId) {
     ws.onmessage = (e) => {
       parseMessage(e.data);
     }
-    ws = duct.createDataChannel("lidar");
+    /*ws = duct.createDataChannel("lidar");
     ws.onopen = (e) => {
       console.log("lidar dc opened");
     }
     ws.onmessage = (e) => {
       parseMessage(e.data);
+    }*/
+    jsontest = duct.createDataChannel("jsontest",{ordered:false,maxRetransmits:2});
+    jsontest.onmessage = (e) => {
+      let j = JSON.parse(e.data);
+      console.log("Got json echo "+ j.blocks.length);
+    }
+    jsontest.onopen = (e) => {
+      console.log("jsontest dc opened");
     }
   });
 }
@@ -150,13 +158,15 @@ function draw(cloudlet) {
 function parseMessage(v) {
   let blocksize = 100;
   let blocksPerPacket = 12;
+  let blocks = [];
   for (let i = 0; i < blocksPerPacket; i++) {
     let offs = i * blocksize;
     let block = v.slice(offs, offs + blocksize);
-    let cloudlet = parseBlock(block);
-    draw(cloudlet);
+    let blocko = parseBlock(block);
+    blocks.push(blocko);
+    draw(blocko);
   }
-
+  jsontest.send(JSON.stringify({blocks:blocks}));
 }
 
 function getUnsignedShort(b1, b2) {
