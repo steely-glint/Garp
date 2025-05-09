@@ -441,7 +441,7 @@ if (!window.indexedDB) {
 
 function PipeDuct(finger, oldws) {
     this.loc = window.location;
-    this.configUrl = document.location.host.startsWith("localhost")?"https://dev.pi.pe/pipeconfig.json":"pipeconfig.json";
+    this.configUrl = "https://dev.pi.pe/pipeconfig.json";
     this.ws = oldws;
     this.wsurl = null;
     this.session = null;
