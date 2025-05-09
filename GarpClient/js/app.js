@@ -50,14 +50,14 @@ function gotId(id, deviceId) {
     ws.onmessage = (e) => {
       parseMessage(e.data);
     }*/
-    jsontest = duct.createDataChannel("jsontest",{ordered:false,maxRetransmits:2});
+    /*jsontest = duct.createDataChannel("jsontest",{ordered:false,maxRetransmits:2});
     jsontest.onmessage = (e) => {
       let j = JSON.parse(e.data);
       console.log("Got json echo "+ j.blocks.length);
     }
     jsontest.onopen = (e) => {
       console.log("jsontest dc opened");
-    }
+    }*/
   });
 }
 
@@ -66,6 +66,7 @@ let maxAz = 315;
 
 function drawme() {
   const ctx = canvas.getContext("2d");
+  //ctx.rotate(Math.PI/2.0);
   const w = canvas.width;
   const h = canvas.height;
   const halfx = w / 2;
@@ -74,17 +75,17 @@ function drawme() {
   ctx.beginPath();
   const x = halfx;
   const y = halfy;
-  let startAngle = 0; // Starting point on circle
-  let endAngle = Math.PI * 2; // End point on circle
+  let startAngle = Math.PI /2.0 ; // Starting point on circle
+  let endAngle = startAngle+Math.PI * 2; // End point on circle
   let radius = 10;
   const counterclockwise = false; // clockwise or counterclockwise
   ctx.arc(x, y, radius, startAngle, endAngle, counterclockwise);
   ctx.fillStyle = `rgb(255, 0, 0)`
   ctx.fill();
   ctx.beginPath();
-  startAngle = (Math.PI * 2 * 45) / 360; // Starting point on circle
-  endAngle = (Math.PI * 2 * 315) / 360; // End point on circle
-  ctx.arc(x, y, halfx - 1, startAngle, endAngle, counterclockwise);
+  let a1 = startAngle+ ((Math.PI * 2 * 45) / 360); // Starting point on circle
+  let a2 = startAngle+ ((Math.PI * 2 * 315) / 360); // End point on circle
+  ctx.arc(x, y, halfx - 1, a1, a2, counterclockwise);
   ctx.strokeStyle = '#FF0000';
   ctx.stroke();
 }
@@ -92,7 +93,9 @@ function drawme() {
 function draw(cloudlet) {
   const ctx = canvas.getContext("2d");
   const w = canvas.width;
-  const h = canvas.height;
+  const h = canvas.height
+  let startAngle = Math.PI /2.0 ; // Starting point on circle
+
   const halfx = w / 2;
   const halfy = h / 2;
   const counterclockwise = false; // clockwise or counterclockwise
@@ -107,8 +110,8 @@ function draw(cloudlet) {
     // erasure path
     ctx.beginPath();
     ctx.moveTo(halfx, halfy);
-    let a1 = (Math.PI * 2 * minAz) / 360.0;
-    let b1 = (Math.PI * 2 * maxAz) / 360.0;
+    let a1 = startAngle+ ((Math.PI * 2 * minAz) / 360.0);
+    let b1 = startAngle+ ((Math.PI * 2 * maxAz) / 360.0);
     let ax = halfx + halfx * Math.cos(a1);
     let ay = halfy + halfy * Math.sin(a1);
     let bx = halfx + halfx * Math.cos(b1);
@@ -121,8 +124,8 @@ function draw(cloudlet) {
 
     ctx.beginPath();
     ctx.moveTo(halfx, halfy);
-    b1 = (Math.PI * 2 * az) / 360.0;
-    a1 = (Math.PI * 2 * (az + 4.0)) / 360.0;
+    b1 = startAngle+ ((Math.PI * 2 * az) / 360.0);
+    a1 = startAngle+ ((Math.PI * 2 * (az + 4.0)) / 360.0);
     ax = halfx + halfx * Math.cos(a1);
     ay = halfy + halfy * Math.sin(a1);
     bx = halfx + halfx * Math.cos(b1);
@@ -141,13 +144,13 @@ function draw(cloudlet) {
       const radius = (pt[0] / 120.0) * halfy;
       const x = halfx; // x coordinate
       const y = halfy; // y coordinate
-      const startAngle = (Math.PI * 2 * az) / 360; // Starting point on circle
-      const endAngle = (Math.PI * 2 * (az + .25)) / 360; // End point on circle
+      const a1 = startAngle+((Math.PI * 2 * az) / 360); // Starting point on circle
+      const a2 =  startAngle+((Math.PI * 2 * (az + .25)) / 360); // End point on circle
       const counterclockwise = false; // clockwise or counterclockwise
-      ctx.arc(x, y, radius, startAngle, endAngle, counterclockwise);
+      ctx.arc(x, y, radius, a1, a2, counterclockwise);
       let dark = Math.abs(pt[1]);
       ctx.strokeStyle = `rgb(0, 0, 0)`;
-
+      ctx.lineWidth='4';
       ctx.stroke();
       az += .25;
     })
@@ -166,7 +169,7 @@ function parseMessage(v) {
     blocks.push(blocko);
     draw(blocko);
   }
-  jsontest.send(JSON.stringify({blocks:blocks}));
+  //jsontest.send(JSON.stringify({blocks:blocks}));
 }
 
 function getUnsignedShort(b1, b2) {
