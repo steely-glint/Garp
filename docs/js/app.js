@@ -19,7 +19,7 @@ function gotId(id, deviceId) {
   duct.setTo(deviceId);
   duct.connect().then(function (d) {
 
-    let ws = duct.createDataChannel("lidar-center",{ordered:false,maxPacketLifeTime:40});
+    let ws =/* duct.createDataChannel("lidar-center",{ordered:false,maxPacketLifeTime:40});
 
     ws.onopen = (e) => {
       console.log("lidar-center dc opened");
@@ -43,13 +43,13 @@ function gotId(id, deviceId) {
     ws.onmessage = (e) => {
       parseMessage(e.data);
     }
-    /*ws = duct.createDataChannel("lidar");
+    /*ws =*/ duct.createDataChannel("lidar");
     ws.onopen = (e) => {
       console.log("lidar dc opened");
     }
     ws.onmessage = (e) => {
       parseMessage(e.data);
-    }*/
+    }/**/
     /*jsontest = duct.createDataChannel("jsontest",{ordered:false,maxRetransmits:2});
     jsontest.onmessage = (e) => {
       let j = JSON.parse(e.data);

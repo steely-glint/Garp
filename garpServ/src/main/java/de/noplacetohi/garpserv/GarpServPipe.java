@@ -182,7 +182,13 @@ public class GarpServPipe {
                 if (stream.OutboundIsOpen()) {
                     try {
                         //Log.info("sending to "+lab);
-                        stream.send(data);
+                        if (stream.isReliable()) {
+                            stream.send(data);
+                        } else {
+                            if (stream.idle()) {
+                                stream.send(data);
+                            }
+                        }
                     } catch (Exception ex) {
                         Log.error("can't send");
                     }
@@ -196,11 +202,13 @@ public class GarpServPipe {
         public JsonTestEndpoint(SCTPStream s) {
             super(s);
         }
+
         @Override
         public void onMessage(SCTPStream stream, String string) {
-            Log.info("message is "+string.length()+" chars long");
+            Log.info("message is " + string.length() + " chars long");
             super.onMessage(stream, string);
         }
+
         @Override
         public JsonObject onJsonMessage(JsonObject messj) {
             Log.info("got json message");
