@@ -141,7 +141,8 @@ function draw(cloudlet) {
 
     cloudlet.data.forEach((pt) => {
       ctx.beginPath();
-      const radius = (pt[0] / 120.0) * halfy;
+      let radius = (pt[0] / 120.0) * halfy;
+      if (radius < 0.0){radius = radius *-1.0;}
       const x = halfx; // x coordinate
       const y = halfy; // y coordinate
       const a1 = startAngle+((Math.PI * 2 * az) / 360); // Starting point on circle
